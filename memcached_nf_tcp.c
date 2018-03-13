@@ -17,18 +17,6 @@ void nf_unregister_net_hook(struct net *net, const struct nf_hook_ops *ops);
 static struct nf_hook_ops pkt_ctrl;
 static struct nf_hook_ops pkt_ctrl2;
 
-
-
-static uint16_t csum(uint16_t* buff, int nwords) {
-    uint32_t sum;
-    for (sum = 0; nwords > 0; nwords--)
-            sum += *buff++;
-    sum = (sum >> 16) + (sum & 0xffff);
-    sum += (sum >> 16);
-
-    return ((uint16_t) ~sum);
-}
-
 unsigned int custom_hook_forward(void *priv,
                    struct sk_buff *skb,
                    const struct nf_hook_state *state)
@@ -134,26 +122,21 @@ unsigned int custom_hook_receive(void *priv,
   }
   printk("\n\n");
 
-  // //Swapping addresses
-  // aswap = iph->saddr;
-  // iph->saddr = iph->daddr;
-  // iph->daddr = aswap;
+  //Swapping addresses
+  aswap = iph->saddr;
+  iph->saddr = iph->daddr;
+  iph->daddr = aswap;
 
-  // //Swapping ports
-  // pswap = tcph->source;
-  // tcph->source = tcph->dest;
-  // tcph->dest = pswap;
+  //Swapping ports
+  pswap = tcph->source;
+  tcph->source = tcph->dest;
+  tcph->dest = pswap;
   
-  // tcplen = skb->len - ip_hdrlen(skb);
-  // tcph->check = 0;
-  // tcph->check = tcp_v4_check(tcplen,
-	//               iph->saddr,
-	//               iph->daddr,
-	//               csum_partial((char *)tcph, tcplen, 0));
-  // ip_send_check (iph);
 
-
-  // saddr = ntohl(iph->saddr);
+  skb->pkt_type = PACKET_OTHERHOST;
+  skb->_skb_refdst = 0;
+  
+    // saddr = ntohl(iph->saddr);
   // daddr = ntohl(iph->daddr);
   // sport = ntohs(tcph->source);
   // dport = ntohs(tcph->dest);
@@ -161,7 +144,6 @@ unsigned int custom_hook_receive(void *priv,
   //                             &daddr, dport);
 
   return NF_ACCEPT;
-  //return NF_DROP | NF_ACCEPT | NF_QUEUE;
 }
 
 int init_module(void)

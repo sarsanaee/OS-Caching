@@ -1,0 +1,1 @@
+cmd_/home/slab/Documents/In-Kernel-Computing-OS-Caching/memcached_nf_udp.ko := ld -r -m elf_x86_64 -T ./scripts/module-common.lds --build-id  -o /home/slab/Documents/In-Kernel-Computing-OS-Caching/memcached_nf_udp.ko /home/slab/Documents/In-Kernel-Computing-OS-Caching/memcached_nf_udp.o /home/slab/Documents/In-Kernel-Computing-OS-Caching/memcached_nf_udp.mod.o ;  true

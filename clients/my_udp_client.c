@@ -21,8 +21,42 @@ void error(char *msg) {
     exit(0);
 }
 
+void printMessage(char * buffer, int length)
+{
+    int i;
 
-void getRequest(char * buffer ,char * key)
+    puts("################# Message Content ->");
+
+    for(i = 0; i < length; i++)
+	printf("%02x ",buffer[i]);
+
+    puts("#################");
+    
+    return;
+}
+
+
+
+
+void sendMessage(int sockfd, struct sockaddr_in serveraddr, char * buffer)
+{
+    int bytes_transmited;
+    int serverlen;
+    serverlen = sizeof(serveraddr);
+    bytes_transmited = sendto(sockfd, buffer, strlen(buffer+8) + 8, 0, &serveraddr, serverlen);
+    printf("salam\n");
+    if (bytes_transmited < 0) 
+      error("ERROR in sendto");
+    /* print the server's reply */
+    bytes_transmited = recvfrom(sockfd, buffer, 50, 0, &serveraddr, &serverlen);
+    if (bytes_transmited < 0) 
+      error("ERROR in recvfrom");
+
+    printMessage(buffer, 50);
+}
+
+
+void get(char * buffer ,char * key)
 {
     //clearing the buffer
     bzero(buffer, BUFSIZE);
@@ -39,23 +73,33 @@ void getRequest(char * buffer ,char * key)
     sprintf(buffer+8, "get %s\r\n", key);
 }
 
-void printMessage(char * buffer, int length)
+
+int set(char * buffer, char * key, char * value)
 {
-    int i;
+    //clearing the buffer
+    bzero(buffer, BUFSIZE);
 
-    puts("################# Message Content ->");
-
-    for(i = 0; i < length; i++)
-	printf("%02x ",buffer[i]);
-
-    puts("#################");
-    
-    return;
+    buffer[0] = 0x00;
+    buffer[1] = 0x00;
+    buffer[2] = 0x00;
+    buffer[3] = 0x00;
+    buffer[4] = 0x00;
+    buffer[5] = 0x01;
+    buffer[6] = 0x00;
+    buffer[7] = 0x00;
+    printf("%s %d %d\n", value, strlen(key), strlen(value));
+    sprintf(buffer+8, "set %s %d %d %d \r\n%s\r\n", key, 0, 0, strlen(value), value);
+    puts("after");
+    return strlen(buffer+8) + 8;
 }
+
+
+
+
 
 int main(int argc, char **argv) {
     int sockfd, portno, n;
-    int serverlen;
+    // int serverlen;
     struct sockaddr_in serveraddr;
     struct hostent *server;
     char *hostname;
@@ -89,7 +133,7 @@ int main(int argc, char **argv) {
   	  (char *)&serveraddr.sin_addr.s_addr, server->h_length);
     serveraddr.sin_port = htons(portno);
     bzero(buf, BUFSIZE);
-    serverlen = sizeof(serveraddr);
+    // serverlen = sizeof(serveraddr);
 
 
     /* get a message from the user */
@@ -128,18 +172,11 @@ int main(int argc, char **argv) {
 
 
 
-    
-    getRequest(buf, "key");
+    set(buf, "key", "alireza");
+    sendMessage(sockfd, serveraddr, buf);
+    get(buf, "key");
+    sendMessage(sockfd, serveraddr, buf);
 
-    n = sendto(sockfd, buf, strlen(buf + 8) + 8, 0, &serveraddr, serverlen);
-    printf("salam\n");
-    if (n < 0) 
-      error("ERROR in sendto");
-    /* print the server's reply */
-    n = recvfrom(sockfd, buf, 50, 0, &serveraddr, &serverlen);
-    if (n < 0) 
-      error("ERROR in recvfrom");
 
-    printMessage(buf, 50);
 }
 

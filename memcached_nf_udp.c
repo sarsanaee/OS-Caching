@@ -268,8 +268,10 @@ unsigned int custom_hook_receive(void *priv,
     // }
     // printk("\n\n");
     
-    if(first_packet)
+    if(first_packet){
         init_np_poll(dport, sport);
+        first_packet = 0;
+    }
     send_np_poll();
 
 
@@ -307,10 +309,8 @@ int init_module(void)
     // pkt_ctrl_forward.priority = NF_IP_PRI_FIRST;
     // nf_register_net_hook(&init_net, &pkt_ctrl_forward);
     // printk(KERN_INFO "custom_hook_local_in\n");
-
+    first_packet = 1;
     printk(KERN_INFO "Module Initialization is Done\n");
-
-
     return 0;
 }
 

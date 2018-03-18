@@ -10,8 +10,15 @@
 #include <sys/socket.h>
 #include <netinet/in.h>
 #include <netdb.h> 
+#include <time.h>
+#include <math.h>
+#include <signal.h>
+#include <stdbool.h>
+#include <sys/time.h>
 
 #define BUFSIZE 2000000
+
+static volatile bool keepRunning = 1;
 
 /* 
  * error - wrapper for perror
@@ -21,6 +28,16 @@ void error(char *msg) {
     exit(0);
 }
 
+void intHandler(int dummy) {
+    keepRunning = 0;
+}
+
+float nextTime(float rateParameter)
+{
+    float temp = -logf(1.0f - (float) random() / (RAND_MAX)) / rateParameter;
+    return temp;
+}
+
 void printMessage(char * buffer, int length)
 {
     int i;
@@ -28,7 +45,7 @@ void printMessage(char * buffer, int length)
     puts("################# Message Content ->");
 
     for(i = 0; i < length; i++)
-    if(buffer[i] != "\0")
+    //if(buffer[i] != "\0")
 	printf("%02x ",buffer[i]);
 
     puts("#################");
@@ -39,36 +56,35 @@ void printMessage(char * buffer, int length)
 
 
 
-void sendMessage(int sockfd, struct sockaddr_in serveraddr, char * buffer, int flag)
+int sendMessage(int sockfd, struct sockaddr_in serveraddr, char * buffer, int timetoSleep)
 {
     int bytes_transmited;
     int serverlen;
     serverlen = sizeof(serveraddr);
+    struct timeval time_before, time_next;
+    int diff;
+    
+    usleep(timetoSleep);
+    gettimeofday (&time_before, NULL);
+    bytes_transmited = sendto(sockfd, buffer, strlen(buffer+8) + 8, 0, &serveraddr, serverlen);
+    if (bytes_transmited < 0)
+    {
+        error("ERROR in sendto");
+        return 1;
+    }
+    bytes_transmited = recvfrom(sockfd, buffer, BUFSIZE, 0, &serveraddr, &serverlen);
+    gettimeofday(&time_next, NULL);
+    diff = (time_next.tv_sec - time_before.tv_sec)*1000000 + (time_next.tv_usec - time_before.tv_usec);
+    printf("%d\n", diff);
+    if (bytes_transmited < 0) 
+    {
+        error("ERROR in recvfrom");
+        return 1;
+    }
+    return 0;
+    
+    //printMessage(buffer, 20);
 
-    if(flag)
-    {
-        bytes_transmited = sendto(sockfd, buffer, strlen(buffer+8) + 8, 0, &serveraddr, serverlen);
-        printf("salam %d\n", bytes_transmited);
-        if (bytes_transmited < 0) 
-        error("ERROR in sendto");
-        /* print the server's reply */
-        bytes_transmited = recvfrom(sockfd, buffer, 20, 0, &serveraddr, &serverlen);
-        if (bytes_transmited < 0) 
-        error("ERROR in recvfrom");
-        //printMessage(buffer, 20);
-    }
-    else
-    {
-        bytes_transmited = sendto(sockfd, buffer, strlen(buffer+8) + 8, 0, &serveraddr, serverlen);
-        printf("salam %d\n", bytes_transmited);
-        if (bytes_transmited < 0) 
-        error("ERROR in sendto");
-        /* print the server's reply */
-        bytes_transmited = recvfrom(sockfd, buffer, 2000000, 0, &serveraddr, &serverlen);
-        if (bytes_transmited < 0) 
-        error("ERROR in recvfrom");
-        printMessage(buffer, bytes_transmited);
-    }
     
 }
 
@@ -135,20 +151,28 @@ int setBySize(char * buffer, char * key, size_t valueSize)
 
 int main(int argc, char **argv) {
     int sockfd, portno, n;
-    // int serverlen;
     struct sockaddr_in serveraddr;
-    struct hostent *server;
-    char *hostname;
+    struct hostent * server;
+    char * hostname;
     char buf[BUFSIZE];
-    int j = 0;
+    int wait;
+    static int maximumRequestsToSend;
+    static int requestCounter = 0;
+    static int rate;
+    int transmissionResult = 0;
+    
 
     /* check command line arguments */
-    if (argc != 3) {
-       fprintf(stderr,"usage: %s <hostname> <port>\n", argv[0]);
+    if (argc != 5) {
+       fprintf(stderr,"usage: %s <hostname> <port> <rate> <maximumRequestsToSend>\n", argv[0]);
        exit(0);
     }
     hostname = argv[1];
     portno = atoi(argv[2]);
+    rate = atoi(argv[3]);
+    maximumRequestsToSend = atoi(argv[4]);
+
+    /* Signal Handling */
 
     /* socket: create the socket */
     sockfd = socket(AF_INET, SOCK_DGRAM, 0);
@@ -181,10 +205,19 @@ int main(int argc, char **argv) {
     // get(buf, "key");
     // sendMessage(sockfd, serveraddr, buf);
 
-    setBySize(buf, "testing", 10000);
-    sendMessage(sockfd, serveraddr, buf, 1);
-    get(buf, "testing");
-    sendMessage(sockfd, serveraddr, buf, 0);
+    setBySize(buf, "testing", 100);
+    transmissionResult = sendMessage(sockfd, serveraddr, buf, wait);
+
+    while(keepRunning && !transmissionResult && requestCounter < maximumRequestsToSend)
+    {
+        wait = nextTime(rate) * 1000000;
+
+        get(buf, "testing");
+        transmissionResult = sendMessage(sockfd, serveraddr, buf, wait);
+        requestCounter = requestCounter + 1;
+    }
+
+    return 0;
 
 }
 

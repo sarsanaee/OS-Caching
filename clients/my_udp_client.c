@@ -11,7 +11,7 @@
 #include <netinet/in.h>
 #include <netdb.h> 
 
-#define BUFSIZE 1024
+#define BUFSIZE 2000000
 
 /* 
  * error - wrapper for perror
@@ -28,6 +28,7 @@ void printMessage(char * buffer, int length)
     puts("################# Message Content ->");
 
     for(i = 0; i < length; i++)
+    if(buffer[i] != "\0")
 	printf("%02x ",buffer[i]);
 
     puts("#################");
@@ -38,23 +39,38 @@ void printMessage(char * buffer, int length)
 
 
 
-void sendMessage(int sockfd, struct sockaddr_in serveraddr, char * buffer)
+void sendMessage(int sockfd, struct sockaddr_in serveraddr, char * buffer, int flag)
 {
     int bytes_transmited;
     int serverlen;
     serverlen = sizeof(serveraddr);
-    bytes_transmited = sendto(sockfd, buffer, strlen(buffer+8) + 8, 0, &serveraddr, serverlen);
-    printf("salam\n");
-    if (bytes_transmited < 0) 
-      error("ERROR in sendto");
-    /* print the server's reply */
-    bytes_transmited = recvfrom(sockfd, buffer, 50, 0, &serveraddr, &serverlen);
-    if (bytes_transmited < 0) 
-      error("ERROR in recvfrom");
 
-    printMessage(buffer, 50);
+    if(flag)
+    {
+        bytes_transmited = sendto(sockfd, buffer, strlen(buffer+8) + 8, 0, &serveraddr, serverlen);
+        printf("salam %d\n", bytes_transmited);
+        if (bytes_transmited < 0) 
+        error("ERROR in sendto");
+        /* print the server's reply */
+        bytes_transmited = recvfrom(sockfd, buffer, 20, 0, &serveraddr, &serverlen);
+        if (bytes_transmited < 0) 
+        error("ERROR in recvfrom");
+        //printMessage(buffer, 20);
+    }
+    else
+    {
+        bytes_transmited = sendto(sockfd, buffer, strlen(buffer+8) + 8, 0, &serveraddr, serverlen);
+        printf("salam %d\n", bytes_transmited);
+        if (bytes_transmited < 0) 
+        error("ERROR in sendto");
+        /* print the server's reply */
+        bytes_transmited = recvfrom(sockfd, buffer, 2000000, 0, &serveraddr, &serverlen);
+        if (bytes_transmited < 0) 
+        error("ERROR in recvfrom");
+        printMessage(buffer, bytes_transmited);
+    }
+    
 }
-
 
 void get(char * buffer ,char * key)
 {
@@ -93,9 +109,29 @@ int set(char * buffer, char * key, char * value)
     return strlen(buffer+8) + 8;
 }
 
+int setBySize(char * buffer, char * key, size_t valueSize)
+{
 
+    //making the message
+    char * value = malloc(valueSize * sizeof(char)); //in Bytes
+    memset(value, 1, valueSize);
 
+    //clearing the buffer
+    bzero(buffer, BUFSIZE);
 
+    buffer[0] = 0x00;
+    buffer[1] = 0x00;
+    buffer[2] = 0x00;
+    buffer[3] = 0x00;
+    buffer[4] = 0x00;
+    buffer[5] = 0x01;
+    buffer[6] = 0x00;
+    buffer[7] = 0x00;
+    //printf("%s %d %d\n", value, strlen(key), strlen(value));
+    sprintf(buffer+8, "set %s %d %d %d \r\n%s\r\n", key, 0, 0, strlen(value), value);
+    puts("after");
+    return strlen(buffer+8) + 8;
+}
 
 int main(int argc, char **argv) {
     int sockfd, portno, n;
@@ -140,43 +176,15 @@ int main(int argc, char **argv) {
     // printf("Please enter msg: ");
     // fgets(buf, BUFSIZE, stdin);
 
-    /*j = sprintf(buf, "%hu", 0x0);
-    j += sprintf(buf+j, "%hu", 0x0000);
-    j += sprintf(buf+j, "%hu", 0x0001);
-    j += sprintf(buf+j, "%hu", 0x0000);
-    
-    j += sprintf(buf+j, "get key1\r\n");
-    */
-    //char * my_buf = malloc(sizeof(char) * 19);
-    //sprintf( + 8, "get key1\r\n");
+    // set(buf, "key", "alireza");
+    // sendMessage(sockfd, serveraddr, buf);
+    // get(buf, "key");
+    // sendMessage(sockfd, serveraddr, buf);
 
-    /* send the message to the server */
-    //j = sprintf(buf, "%02x", 0x00);
-    //j += sprintf(buf+j, "%02x", 0x00);
-    //j += sprintf(buf+j, "%02x", 0x01);
-    //j += sprintf(buf+j, "%02x", 0x00);
-    //printf("%d\n", j);
-    
-    
-    
-    // buf[0] = 0x00;
-    // buf[1] = 0x00;
-    // buf[2] = 0x00;
-    // buf[3] = 0x00;
-    // buf[4] = 0x00;
-    // buf[5] = 0x01;
-    // buf[6] = 0x00;
-    // buf[7] = 0x00;
-
-    // sprintf(buf+8, "get key1\r\n");
-
-
-
-    set(buf, "key", "alireza");
-    sendMessage(sockfd, serveraddr, buf);
-    get(buf, "key");
-    sendMessage(sockfd, serveraddr, buf);
-
+    setBySize(buf, "testing", 10000);
+    sendMessage(sockfd, serveraddr, buf, 1);
+    get(buf, "testing");
+    sendMessage(sockfd, serveraddr, buf, 0);
 
 }
 

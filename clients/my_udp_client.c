@@ -15,8 +15,10 @@
 #include <signal.h>
 #include <stdbool.h>
 #include <sys/time.h>
+#include "skbuff.h"
 
 #define BUFSIZE 2000000
+#define MESSCHUNK 10000
 
 static volatile bool keepRunning = 1;
 
@@ -54,33 +56,73 @@ void printMessage(char * buffer, int length)
 }
 
 
+char * setPacketHeader(char * header, int totalPackets, int sequenceNumber)
+{
+    header[0] = 0x00;
+    header[1] = 0x00;
+    header[2] = 0x00;
+    // buffer[3] = 0x00;
+    header[3] = sequenceNumber;
+    header[4] = 0x00;
+    // buffer[5] = 0x01;
+    header[5] = totalPackets;
+    header[6] = 0x00;
+    header[7] = 0x00;
+}
 
 
-int sendMessage(int sockfd, struct sockaddr_in serveraddr, char * buffer, int timetoSleep)
+
+
+int SendMessage(int sockfd, struct sockaddr_in serveraddr, Data * data, int timetoSleep)
 {
     int bytes_transmited;
     int serverlen;
     serverlen = sizeof(serveraddr);
     struct timeval time_before, time_next;
-    int diff;
-    
+    int diff = 0;
+    int chunk;
+    char * index_buffer = data->buffer;
+
+    data->touched = false;
+
+    chunk = data->bufferSize < MESSCHUNK ? data->bufferSize : MESSCHUNK;
     usleep(timetoSleep);
-    gettimeofday (&time_before, NULL);
-    bytes_transmited = sendto(sockfd, buffer, strlen(buffer+8) + 8, 0, &serveraddr, serverlen);
+    while(data->bufferSize  > 0)
+    {
+        UpdateHeader(data);
+        //ShowHeader(data->memcachedHeader);
+        gettimeofday (&time_before, NULL);
+        bytes_transmited = sendto(sockfd, data->buffer, chunk, 0, &serveraddr, serverlen);
+        gettimeofday(&time_next, NULL);
+        diff = (time_next.tv_sec - time_before.tv_sec)*1000000 + (time_next.tv_usec - time_before.tv_usec);
+
+        if(bytes_transmited < 1)
+            break;
+        data->buffer = data->buffer + bytes_transmited;
+        data->bufferSize  = data->bufferSize  - bytes_transmited;
+        chunk = data->bufferSize < MESSCHUNK ? data->bufferSize : MESSCHUNK;
+    }
+    //bytes_transmited = sendto(sockfd, buffer, size, 0, &serveraddr, serverlen);
+
+
     if (bytes_transmited < 0)
     {
         error("ERROR in sendto");
         return 1;
     }
-    bytes_transmited = recvfrom(sockfd, buffer, BUFSIZE, 0, &serveraddr, &serverlen);
+    //printf("####################################\n");
+    data->buffer = index_buffer;
+    gettimeofday (&time_before, NULL);
+    bytes_transmited = recvfrom(sockfd, data->buffer, BUFSIZE, 0, &serveraddr, &serverlen);
     gettimeofday(&time_next, NULL);
-    diff = (time_next.tv_sec - time_before.tv_sec)*1000000 + (time_next.tv_usec - time_before.tv_usec);
+    diff = diff + (time_next.tv_sec - time_before.tv_sec)*1000000 + (time_next.tv_usec - time_before.tv_usec);
     printf("%d\n", diff);
     if (bytes_transmited < 0) 
     {
         error("ERROR in recvfrom");
         return 1;
     }
+
     return 0;
     
     //printMessage(buffer, 20);
@@ -88,65 +130,94 @@ int sendMessage(int sockfd, struct sockaddr_in serveraddr, char * buffer, int ti
     
 }
 
-void get(char * buffer ,char * key)
+int get(char * buffer,
+        char * key, int sockfd, 
+        struct sockaddr_in serveraddr, 
+        int timetoSleep)
 {
+    int result;
+
+    Data * newPacket = (Data *) malloc(sizeof(Data));
+
     //clearing the buffer
     bzero(buffer, BUFSIZE);
 
-    buffer[0] = 0x00;
-    buffer[1] = 0x00;
-    buffer[2] = 0x00;
-    buffer[3] = 0x00;
-    buffer[4] = 0x00;
-    buffer[5] = 0x01;
-    buffer[6] = 0x00;
-    buffer[7] = 0x00;
+
 
     sprintf(buffer+8, "get %s\r\n", key);
+
+    SerializeNewPacket(newPacket, buffer);
+
+    result = SendMessage(sockfd, serveraddr, newPacket, timetoSleep);
+       
+    free(newPacket->memcachedHeader);
+    free(newPacket);
+
+    return result;
 }
 
 
-int set(char * buffer, char * key, char * value)
+int set(char * buffer, 
+        char * key, 
+        char * value, 
+        int sockfd, 
+        struct sockaddr_in serveraddr, 
+        int timetoSleep)
 {
     //clearing the buffer
     bzero(buffer, BUFSIZE);
 
-    buffer[0] = 0x00;
-    buffer[1] = 0x00;
-    buffer[2] = 0x00;
-    buffer[3] = 0x00;
-    buffer[4] = 0x00;
-    buffer[5] = 0x01;
-    buffer[6] = 0x00;
-    buffer[7] = 0x00;
     printf("%s %d %d\n", value, strlen(key), strlen(value));
     sprintf(buffer+8, "set %s %d %d %d \r\n%s\r\n", key, 0, 0, strlen(value), value);
-    puts("after");
     return strlen(buffer+8) + 8;
 }
 
-int setBySize(char * buffer, char * key, size_t valueSize)
+
+void SerializeNewPacket(Data * data, char * buffer)
+{
+    char * header = (char *) malloc(sizeof(char) * 8);
+
+    data->sequenceNumber = 0;
+    data->buffer = (char *) buffer;
+    data->bufferSize = strlen(buffer + 8) + 8;
+    data->totalPackets = ((data->bufferSize + 30) / MESSCHUNK) + 1;
+    data->bufferSize = data->bufferSize + 8 * (data->totalPackets);
+    NewHeaderSetup(data->totalPackets, header); 
+    data->memcachedHeader = header;
+    memcpy(data->buffer, data->memcachedHeader, 8);
+
+}
+
+int SetBySize(char * buffer, 
+        char * key, 
+        size_t valueSize,
+        int sockfd, 
+        struct sockaddr_in serveraddr, 
+        int timetoSleep)
 {
 
+    int result; 
     //making the message
+    Data * newPacket = (Data *) malloc(sizeof(Data));
+
     char * value = malloc(valueSize * sizeof(char)); //in Bytes
     memset(value, 1, valueSize);
 
     //clearing the buffer
     bzero(buffer, BUFSIZE);
+    
+    sprintf(buffer + 8, "set %s %d %d %d \r\n%s\r\n", key, 0, 0, valueSize, value);
 
-    buffer[0] = 0x00;
-    buffer[1] = 0x00;
-    buffer[2] = 0x00;
-    buffer[3] = 0x00;
-    buffer[4] = 0x00;
-    buffer[5] = 0x01;
-    buffer[6] = 0x00;
-    buffer[7] = 0x00;
-    //printf("%s %d %d\n", value, strlen(key), strlen(value));
-    sprintf(buffer+8, "set %s %d %d %d \r\n%s\r\n", key, 0, 0, strlen(value), value);
-    puts("after");
-    return strlen(buffer+8) + 8;
+    SerializeNewPacket(newPacket, buffer);
+
+    result = SendMessage(sockfd, serveraddr, newPacket, timetoSleep);
+    
+    free(value);
+    free(newPacket->memcachedHeader);
+    free(newPacket);
+    
+    
+    return result;
 }
 
 int main(int argc, char **argv) {
@@ -160,17 +231,19 @@ int main(int argc, char **argv) {
     static int requestCounter = 0;
     static int rate;
     int transmissionResult = 0;
+    size_t packetSize = 0;
     
 
     /* check command line arguments */
-    if (argc != 5) {
-       fprintf(stderr,"usage: %s <hostname> <port> <rate> <maximumRequestsToSend>\n", argv[0]);
+    if (argc != 6) {
+       fprintf(stderr,"usage: %s <hostname> <port> <rate> <maximumRequestsToSend> <packetSize>\n", argv[0]);
        exit(0);
     }
     hostname = argv[1];
     portno = atoi(argv[2]);
     rate = atoi(argv[3]);
     maximumRequestsToSend = atoi(argv[4]);
+    packetSize = atoi(argv[5]);
 
     /* Signal Handling */
 
@@ -204,16 +277,14 @@ int main(int argc, char **argv) {
     // sendMessage(sockfd, serveraddr, buf);
     // get(buf, "key");
     // sendMessage(sockfd, serveraddr, buf);
+    wait = nextTime(rate) * 1000000;
 
-    setBySize(buf, "testing", 100);
-    transmissionResult = sendMessage(sockfd, serveraddr, buf, wait);
-
+    transmissionResult = SetBySize(buf, "testing", packetSize, sockfd, serveraddr, wait);
+    // = sendMessage(sockfd, serveraddr, buf, wait);
     while(keepRunning && !transmissionResult && requestCounter < maximumRequestsToSend)
     {
         wait = nextTime(rate) * 1000000;
-
-        get(buf, "testing");
-        transmissionResult = sendMessage(sockfd, serveraddr, buf, wait);
+        transmissionResult = get(buf, "testing", sockfd, serveraddr, wait);
         requestCounter = requestCounter + 1;
     }
 

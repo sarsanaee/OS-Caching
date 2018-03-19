@@ -1,6 +1,13 @@
 {
     "files.associations": {
         "socket.h": "c",
-        "stdlib.h": "c"
+        "stdlib.h": "c",
+        "ip.h": "c",
+        "initializer_list": "c",
+        "types.h": "c",
+        "stdbool.h": "c",
+        "time.h": "c",
+        "type_traits": "c",
+        "unistd.h": "c"
     }
 }

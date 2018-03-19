@@ -18,7 +18,7 @@
 #include "skbuff.h"
 
 #define BUFSIZE 2000000
-#define MESSCHUNK 10000
+#define MESSCHUNK 100000
 
 static volatile bool keepRunning = 1;
 

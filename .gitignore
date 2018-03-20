@@ -85,6 +85,9 @@ GTAGS
 *~
 \#*#
 
+#python complied files
+*.pyc
+
 #
 # Leavings from module signing
 #
@@ -95,3 +98,8 @@ x509.genkey
 
 # Executables
 *.out
+
+.tmp_versions
+.vscode
+result
+__pycache__

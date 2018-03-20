@@ -1,4 +1,4 @@
-/* 
+/*
  * udpclient.c - A simple UDP client
  * usage: udpclient <host> <port>
  */
@@ -9,7 +9,7 @@
 #include <sys/types.h>
 #include <sys/socket.h>
 #include <netinet/in.h>
-#include <netdb.h> 
+#include <netdb.h>
 #include <time.h>
 #include <math.h>
 #include <signal.h>
@@ -18,11 +18,11 @@
 #include "skbuff.h"
 
 #define BUFSIZE 2000000
-#define MESSCHUNK 100000
+#define MESSCHUNK 1000
 
 static volatile bool keepRunning = 1;
 
-/* 
+/*
  * error - wrapper for perror
  */
 void error(char *msg) {
@@ -51,7 +51,7 @@ void printMessage(char * buffer, int length)
 	printf("%02x ",buffer[i]);
 
     puts("#################");
-    
+
     return;
 }
 
@@ -117,22 +117,22 @@ int SendMessage(int sockfd, struct sockaddr_in serveraddr, Data * data, int time
     gettimeofday(&time_next, NULL);
     diff = diff + (time_next.tv_sec - time_before.tv_sec)*1000000 + (time_next.tv_usec - time_before.tv_usec);
     printf("%d\n", diff);
-    if (bytes_transmited < 0) 
+    if (bytes_transmited < 0)
     {
         error("ERROR in recvfrom");
         return 1;
     }
 
     return 0;
-    
+
     //printMessage(buffer, 20);
 
-    
+
 }
 
 int get(char * buffer,
-        char * key, int sockfd, 
-        struct sockaddr_in serveraddr, 
+        char * key, int sockfd,
+        struct sockaddr_in serveraddr,
         int timetoSleep)
 {
     int result;
@@ -149,7 +149,7 @@ int get(char * buffer,
     SerializeNewPacket(newPacket, buffer);
 
     result = SendMessage(sockfd, serveraddr, newPacket, timetoSleep);
-       
+
     free(newPacket->memcachedHeader);
     free(newPacket);
 
@@ -157,11 +157,11 @@ int get(char * buffer,
 }
 
 
-int set(char * buffer, 
-        char * key, 
-        char * value, 
-        int sockfd, 
-        struct sockaddr_in serveraddr, 
+int set(char * buffer,
+        char * key,
+        char * value,
+        int sockfd,
+        struct sockaddr_in serveraddr,
         int timetoSleep)
 {
     //clearing the buffer
@@ -182,21 +182,21 @@ void SerializeNewPacket(Data * data, char * buffer)
     data->bufferSize = strlen(buffer + 8) + 8;
     data->totalPackets = ((data->bufferSize + 30) / MESSCHUNK) + 1;
     data->bufferSize = data->bufferSize + 8 * (data->totalPackets);
-    NewHeaderSetup(data->totalPackets, header); 
+    NewHeaderSetup(data->totalPackets, header);
     data->memcachedHeader = header;
     memcpy(data->buffer, data->memcachedHeader, 8);
 
 }
 
-int SetBySize(char * buffer, 
-        char * key, 
+int SetBySize(char * buffer,
+        char * key,
         size_t valueSize,
-        int sockfd, 
-        struct sockaddr_in serveraddr, 
+        int sockfd,
+        struct sockaddr_in serveraddr,
         int timetoSleep)
 {
 
-    int result; 
+    int result;
     //making the message
     Data * newPacket = (Data *) malloc(sizeof(Data));
 
@@ -205,18 +205,18 @@ int SetBySize(char * buffer,
 
     //clearing the buffer
     bzero(buffer, BUFSIZE);
-    
+
     sprintf(buffer + 8, "set %s %d %d %d \r\n%s\r\n", key, 0, 0, valueSize, value);
 
     SerializeNewPacket(newPacket, buffer);
 
     result = SendMessage(sockfd, serveraddr, newPacket, timetoSleep);
-    
+
     free(value);
     free(newPacket->memcachedHeader);
     free(newPacket);
-    
-    
+
+
     return result;
 }
 
@@ -232,7 +232,7 @@ int main(int argc, char **argv) {
     static int rate;
     int transmissionResult = 0;
     size_t packetSize = 0;
-    
+
 
     /* check command line arguments */
     if (argc != 6) {
@@ -249,7 +249,7 @@ int main(int argc, char **argv) {
 
     /* socket: create the socket */
     sockfd = socket(AF_INET, SOCK_DGRAM, 0);
-    if (sockfd < 0) 
+    if (sockfd < 0)
         error("ERROR opening socket");
 
     /* gethostbyname: get the server's DNS entry */
@@ -262,7 +262,7 @@ int main(int argc, char **argv) {
     /* build the server's Internet address */
     bzero((char *) &serveraddr, sizeof(serveraddr));
     serveraddr.sin_family = AF_INET;
-    bcopy((char *)server->h_addr, 
+    bcopy((char *)server->h_addr,
   	  (char *)&serveraddr.sin_addr.s_addr, server->h_length);
     serveraddr.sin_port = htons(portno);
     bzero(buf, BUFSIZE);
@@ -279,16 +279,15 @@ int main(int argc, char **argv) {
     // sendMessage(sockfd, serveraddr, buf);
     wait = nextTime(rate) * 1000000;
 
-    transmissionResult = SetBySize(buf, "testing", packetSize, sockfd, serveraddr, wait);
+    //transmissionResult = SetBySize(buf, "testing", packetSize, sockfd, serveraddr, wait);
     // = sendMessage(sockfd, serveraddr, buf, wait);
     while(keepRunning && !transmissionResult && requestCounter < maximumRequestsToSend)
     {
         wait = nextTime(rate) * 1000000;
-        transmissionResult = get(buf, "testing", sockfd, serveraddr, wait);
+        transmissionResult = get(buf, "key", sockfd, serveraddr, wait);
         requestCounter = requestCounter + 1;
     }
 
     return 0;
 
 }
-
